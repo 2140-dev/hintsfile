@@ -48,7 +48,7 @@ impl EliasFano {
             let low = element & mask;
             for shift in 0..l {
                 let bit = ((low >> shift) & 1) as u8;
-                curr_byte |= bit << (7 - bit_pos);
+                curr_byte |= bit << bit_pos;
                 bit_pos += 1;
                 if bit_pos == 8 {
                     packed.push(curr_byte);
@@ -81,7 +81,7 @@ impl EliasFano {
                     curr_byte = 0x00;
                 }
             }
-            curr_byte |= 1 << (7 - bit_pos);
+            curr_byte |= 1 << bit_pos;
             bit_pos += 1;
             if bit_pos == 8 {
                 high.push(curr_byte);
@@ -110,7 +110,7 @@ impl EliasFano {
         for _ in 0..self.n {
             let mut low_val: u32 = 0;
             for shift in 0..l {
-                let bit = (self.low[low_byte_pos] >> (7 - low_bit_pos)) & 1;
+                let bit = (self.low[low_byte_pos] >> low_bit_pos) & 1;
                 low_val |= (bit as u32) << shift;
                 low_bit_pos += 1;
                 if low_bit_pos == 8 {
@@ -119,7 +119,7 @@ impl EliasFano {
                 }
             }
             loop {
-                let bit = (self.high[high_byte_pos] >> (7 - high_bit_pos)) & 1;
+                let bit = (self.high[high_byte_pos] >> high_bit_pos) & 1;
                 high_bit_pos += 1;
                 if high_bit_pos == 8 {
                     high_byte_pos += 1;
@@ -429,6 +429,18 @@ mod tests {
     use crate::{Hintsfile, HintsfileBuilder};
 
     use super::EliasFano;
+
+    #[test]
+    fn lsb_first_bit_order() {
+        // Lows 3, 3, 0 pack bit 0 first into bits 0..5; highs 0, 1, 3 unary `1 01 001`.
+        let elms = vec![3, 7, 12];
+        let ef = EliasFano::compress(&elms);
+        let mut bytes = Vec::new();
+        ef.write(&mut bytes).unwrap();
+        assert_eq!(bytes, vec![0x03, 0x0c, 0x0f, 0x25]);
+        let ef = EliasFano::from_reader(&mut bytes.as_slice()).unwrap();
+        assert_eq!(ef.decompress(), elms);
+    }
 
     #[test]
     fn compress_decompress() {
