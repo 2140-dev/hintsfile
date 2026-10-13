@@ -480,6 +480,13 @@ mod tests {
     }
 
     #[test]
+    fn malformed_hintsfile_returns_error() {
+        // Header: version 0, one block. Elias-Fano: n = 5, m = 0.
+        let bytes = [0x55, 0x54, 0x58, 0x4f, 0, 1, 0, 0, 0, 5, 0];
+        assert!(Hintsfile::from_reader(&mut bytes.as_slice()).is_err());
+    }
+
+    #[test]
     fn hintsfile_roundtrip() {
         let want = Vec::new();
         let builder = HintsfileBuilder::new(want);
