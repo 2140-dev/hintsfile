@@ -159,7 +159,6 @@ impl EliasFano {
     /// the size of the list and `m` is the largest element.
     #[inline]
     const fn l(m: u32, n: u32) -> u8 {
-        debug_assert!(m != u32::MAX);
         ((m + 1) / n).ilog2() as u8
     }
 
@@ -175,14 +174,19 @@ impl EliasFano {
             });
         }
         let m = read_compact_size(reader)?;
+        if m == u32::MAX || n > m + 1 {
+            return Err(invalid_data("invalid Elias-Fano parameters"));
+        }
         let l = Self::l(m, n);
         let low_bytes = (n as usize * l as usize).div_ceil(8);
         let mut low_buf = vec![0u8; low_bytes];
         reader.read_exact(&mut low_buf)?;
-        debug_assert!(m != u32::MAX);
         let high_bytes = (n as usize + (m >> l) as usize).div_ceil(8);
         let mut high_buf = vec![0u8; high_bytes];
         reader.read_exact(&mut high_buf)?;
+        if high_buf.iter().map(|b| b.count_ones()).sum::<u32>() != n {
+            return Err(invalid_data("inconsistent Elias-Fano high bits"));
+        }
         Ok(Self {
             n,
             m,
@@ -221,6 +225,10 @@ fn write_compact_size<W: Write>(value: u32, writer: &mut W) -> Result<(), std::i
     }
 }
 
+fn invalid_data(msg: &str) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
+}
+
 #[inline]
 fn read_compact_size<R: Read>(reader: &mut R) -> Result<u32, std::io::Error> {
     let mut buf: [u8; 1] = [0; 1];
@@ -238,7 +246,7 @@ fn read_compact_size<R: Read>(reader: &mut R) -> Result<u32, std::io::Error> {
             Ok(u32::from_le_bytes(buf))
         }
         0..=0xFC => Ok(prefix as u32),
-        _ => panic!("unexpected large offset"),
+        _ => Err(invalid_data("unexpected large offset")),
     }
 }
 
@@ -477,6 +485,13 @@ mod tests {
         let ef = EliasFano::from_reader(&mut buf_reader).unwrap();
         let got = ef.decompress();
         assert_eq!(want, got);
+    }
+
+    #[test]
+    fn malformed_hintsfile_returns_error() {
+        // Header: version 0, one block. Elias-Fano: n = 5, m = 0.
+        let bytes = [0x55, 0x54, 0x58, 0x4f, 0, 1, 0, 0, 0, 5, 0];
+        assert!(Hintsfile::from_reader(&mut bytes.as_slice()).is_err());
     }
 
     #[test]
